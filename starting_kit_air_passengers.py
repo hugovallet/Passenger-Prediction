@@ -69,7 +69,7 @@ print data['log_PAX'].std()
 
 # In[54]:
 
-data_encoded = data
+X_encoded = data
 
 data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Departure'], prefix='d'))
 data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Arrival'], prefix='a'))
@@ -254,7 +254,12 @@ class FeatureExtractor(object):
         # path = os.path.dirname(__file__)  # use this in submission
         path = '.'  # use this in notebook
         data_weather = pd.read_csv(os.path.join(path, "external_data.csv"))
-        X_weather = data_weather[['Date', 'AirPort', 'Max TemperatureC']]
+        #X_weather = data_weather[['Date', 'AirPort', 'Max TemperatureC']]
+        X_weather = data_weather
+        X_weather = X_weather.drop("Events",axis=1)
+        X_weather = X_weather.drop("Precipitationmm",axis=1)
+        X_weather = X_weather.drop("Max Gust SpeedKm/h",axis=1)
+                
         
         X_weather = X_weather.rename(columns={'Date': 'DateOfDeparture', 'AirPort': 'Arrival'})
         X_encoded = X_encoded.set_index(['DateOfDeparture', 'Arrival'])
@@ -265,6 +270,20 @@ class FeatureExtractor(object):
         X_encoded = X_encoded.join(pd.get_dummies(X_encoded['Arrival'], prefix='a'))
         X_encoded = X_encoded.drop('Departure', axis=1)
         X_encoded = X_encoded.drop('Arrival', axis=1)
+        
+        X_encoded['DateOfDeparture'] = pd.to_datetime(X_encoded['DateOfDeparture'])
+        X_encoded['year'] = X_encoded['DateOfDeparture'].dt.year
+        X_encoded['month'] = X_encoded['DateOfDeparture'].dt.month
+        X_encoded['day'] = X_encoded['DateOfDeparture'].dt.day
+        X_encoded['weekday'] = X_encoded['DateOfDeparture'].dt.weekday
+        X_encoded['week'] = X_encoded['DateOfDeparture'].dt.week
+        X_encoded['n_days'] = X_encoded['DateOfDeparture'].apply(lambda date: (date - pd.to_datetime("1970-01-01")).days)
+        
+        X_encoded = X_encoded.join(pd.get_dummies(X_encoded['year'], prefix='y'))
+        X_encoded = X_encoded.join(pd.get_dummies(X_encoded['month'], prefix='m'))
+        X_encoded = X_encoded.join(pd.get_dummies(X_encoded['day'], prefix='d'))
+        X_encoded = X_encoded.join(pd.get_dummies(X_encoded['weekday'], prefix='wd'))
+        X_encoded = X_encoded.join(pd.get_dummies(X_encoded['week'], prefix='w'))
 
         X_encoded = X_encoded.drop('DateOfDeparture', axis=1)
         X_array = X_encoded.values
@@ -278,13 +297,15 @@ class FeatureExtractor(object):
 # In[65]:
 
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble import AdaBoostRegressor
 from sklearn.base import BaseEstimator
 
 class Regressor(BaseEstimator):
     def __init__(self):
         #self.clf = RandomForestRegressor(n_estimators=100, max_depth=100, max_features=100)
-        self.clf = AdaBoostRegressor(n_estimator=100,loss="exponential")
+        boosting_params = {'n_estimators': 100, 'max_depth': 10, 'min_samples_split': 1,'learning_rate': 0.1, 'loss': 'ls', 'max_features' : "auto"}
+        self.clf = GradientBoostingRegressor(**boosting_params)
 
     def fit(self, X, y):
         self.clf.fit(X, y)
@@ -292,21 +313,6 @@ class Regressor(BaseEstimator):
     def predict(self, X):
         return self.clf.predict(X)
 
-
-# In[66]:
-
-from sklearn.linear_model import LinearRegression
-from sklearn.base import BaseEstimator
-
-class Regressor(BaseEstimator):
-    def __init__(self):
-        self.clf = LinearRegression()
-
-    def fit(self, X, y):
-        self.clf.fit(X, y)
-
-    def predict(self, X):
-        return self.clf.predict(X)
 
 
 # Let's put it together and run the chain.
