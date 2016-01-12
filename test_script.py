@@ -186,11 +186,12 @@ X_test_array = np.array([X_array[i] for i in test_is])
 y_pred_array = reg.predict(X_test_array)
 
 #%%
+from bokeh.plotting import *
+
 output_file("prediction.html")
 p = figure(plot_width=1600, plot_height=800)
-p.line(list(np.arange(0,len(y_train))),list(y_train),line_color="blue",alpha=0.2,name="True values")
-p.line(list(np.arange(0,len(y_train))),list(prediction),line_color="red",alpha=0.2,name="Predicted values")
-#p.legend()
+p.line(list(np.arange(0,len(ground_truth_array))),list(ground_truth_array),line_color="blue",alpha=0.2,name="True values")
+p.line(list(np.arange(0,len(y_train_array))),list(y_pred_array),line_color="red",alpha=0.2,name="Predicted values")
 
 
 show(p)
@@ -276,40 +277,54 @@ We wanna see if performing some feature filtering could improve the results
 
 #%%
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import partial_dependence as pds
+from sklearn.feature_selection import f_regression
+
+f_test, p_values=f_regression(X_array,y_array)
 
 # Fit regression model
-params = {'n_estimators': 100, 'max_depth': 10, 'min_samples_split': 1,
-          'learning_rate': 0.1, 'loss': 'ls', 'max_features' : "auto"}
+params = {'n_estimators': 300, 'max_depth': 7, 'min_samples_split': 1,
+          'learning_rate': 0.1, 'loss': 'huber', 'max_features' : "auto"}
 reg = GradientBoostingRegressor(**params)
+
+train_is, test_is = skf_is
+X_train_array = np.array([X_array[i] for i in train_is])
+y_train_array = np.array([y_array[i] for i in train_is])
+X_test_array = np.array([X_array[i] for i in test_is])
+
 
 reg.fit(X_train_array, y_train_array)
 
-_, test_is = skf_is
-X_test_array = np.array([X_array[i] for i in test_is])
 y_pred_array = reg.predict(X_test_array)
 
 ground_truth_array = y_array[test_is]
 rmse = np.sqrt(mean_squared_error(ground_truth_array, y_pred_array))
 print("RMSE: %.4f" % rmse)
 
-###############################################################################
-# Plot training deviance
+#•features = ['Week','Day', 'WeeksToDeparture']
+#fig,ax = pds.plot_partial_dependence(reg, X_train_array, features, feature_names)
+
+
 #%%
-# compute test set deviance
+# Follow the RMSE at each stage
 test_score = np.zeros((params['n_estimators'],), dtype=np.float64)
+train_score = np.zeros((params['n_estimators'],), dtype=np.float64)
 
 for i, y_pred in enumerate(reg.staged_predict(X_test_array)):
-    test_score[i] = reg.loss_(ground_truth_array, y_pred)
+    test_score[i] = np.sqrt(mean_squared_error(ground_truth_array, y_pred))
+    
+for i, y_pred_train in enumerate(reg.staged_predict(X_train_array)):    
+    train_score[i] = np.sqrt(mean_squared_error(y_train_array, y_pred_train))
 
 plt.figure(figsize=(12, 6))
 plt.subplot(1, 2, 1)
-plt.title('Deviance')
-plt.plot(np.arange(params['n_estimators']) + 1, reg.train_score_, 'b-',
-         label='Training Set Deviance')
+plt.title('RMSE')
+plt.plot(np.arange(params['n_estimators']) + 1, train_score, 'b-',
+         label='Training Set RMSE')
 plt.plot(np.arange(params['n_estimators']) + 1, test_score, 'r-',
-         label='Test Set Deviance')
+         label='Test Set RMSE')
 plt.legend(loc='upper right')
 plt.xlabel('Boosting Iterations')
-plt.ylabel('Deviance')
+plt.ylabel('RMSE')
 
 
