@@ -64,7 +64,7 @@ def airport_geographic_data(data, include_names = False, keep_only_distance = Fa
     if scaling == True:
         departure_geo_data = scale(departure_geo_data,axis=1)
         """
-    data = pd.merge(data,departure_geo_data, on = "Departure")
+    data = data.reset_index().merge(departure_geo_data, how="left").set_index('index')
         
     arrival_geo_data = add_data.copy()
     arrival_geo_data.columns = "arr_"+arrival_geo_data.columns
@@ -73,7 +73,8 @@ def airport_geographic_data(data, include_names = False, keep_only_distance = Fa
     if scaling==True :
         arrival_geo_data = scale(arrival_geo_data,axis=1)
         """
-    data = pd.merge(data,arrival_geo_data, on = "Arrival")
+    data = data.reset_index().merge(arrival_geo_data, how="left").set_index('index')
+    
     
     if include_names==False:
         data=data.drop(["dep_City","dep_Country","arr_City","arr_Country"],axis=1)
@@ -86,8 +87,112 @@ def airport_geographic_data(data, include_names = False, keep_only_distance = Fa
         data=data.drop(["dep_Lat","dep_Long","dep_Alt","dep_Time_zone","arr_Lat","arr_Long","arr_Alt","arr_Time_zone"],axis=1)
     
     return data
+    
+def air_accidents_data(data):
+    add_data = pd.read_csv("./Additional data/Aircraft_accidents_data.csv")
+    data['DateOfDeparture'] = pd.to_datetime(data['DateOfDeparture'])
+    data['Year'] = data['DateOfDeparture'].dt.year
+    data = data.reset_index().merge(add_data, how="left").set_index('index')
+    data = data.drop("Year",axis=1) #Dropped beacuse redefined latter with dummy converter
+    
+    return data
+    
+def airports_traffic(data):
+    add_data = pd.read_csv("./Additional data/Airports_traffic.csv")
+    data['DateOfDeparture'] = pd.to_datetime(data['DateOfDeparture'])
+    data['Year'] = data['DateOfDeparture'].dt.year
+    
+    #Rename columns
+    departure_add_data = add_data.copy()
+    departure_add_data = departure_add_data.rename(columns={"IATA":"Departure","Total passengers":"Dep_total_passengers"})
+    arrival_add_data = add_data.copy()
+    arrival_add_data = arrival_add_data.rename(columns={"IATA":"Arrival","Total passengers":"Arr_total_passengers"})
+    
+    data = data.reset_index().merge(departure_add_data, how = "left").set_index('index')
+    data = data.reset_index().merge(arrival_add_data, how = "left").set_index('index')
+    
+    return data
+    
+def airports_monthly_traffic(data):
+    airports_monthly = pd.read_csv("./Additional data/Airports_monthly_traffic.csv",sep=",")
+    data_encoded = data.copy()
+    data_encoded['DateOfDeparture'] = pd.to_datetime(data_encoded['DateOfDeparture'])
+    data_encoded['year'] = data_encoded['DateOfDeparture'].dt.year
+    data_encoded['month'] = data_encoded['DateOfDeparture'].dt.month
+    
+    months = dict({"Jan": 1,"Feb": 2,"Mar": 3,"Apr": 4,"May": 5,"Jun": 6,"Jul": 7,"Aug": 8,"Sep": 9,"Oct": 10,"Nov": 11,"Dec": 12})
+    
+    monthly_passengers = pd.DataFrame(columns=["Code","Monthly passengers","year","month"])
+    airports_monthly_months=airports_monthly.drop("Code",axis=1)
+    
+    for col in airports_monthly_months.columns:
+        column = airports_monthly[["Code",col]]
+        month = months[col[0:3]]
+        year = col[3:7]
+        column['year']=int(year)
+        column['month']=int(month)
+        column = column.rename(columns={col : "Monthly passengers"})
+        monthly_passengers = monthly_passengers.append(column)
+    
+    arrival_monthly_passengers = monthly_passengers.copy()
+    arrival_monthly_passengers = arrival_monthly_passengers.rename(columns={"Monthly passengers":"Arrival Monthly Passengers","Code":"Arrival"})
+    departure_monthly_passengers = monthly_passengers.copy()
+    departure_monthly_passengers = departure_monthly_passengers.rename(columns={"Monthly passengers":"Departure Monthly Passengers","Code":"Departure"})
+    
+    data_encoded = pd.merge(data_encoded,departure_monthly_passengers,on=["Departure","year","month"])
+    data_encoded = pd.merge(data_encoded,arrival_monthly_passengers,on=["Arrival","year","month"])
+    data_encoded = data_encoded.drop(["year","month"],axis=1)
+    
+    return data_encoded
 
-def meteorological_data(data):
+
+        
+    
+
+def fix_events_column(data_weather):
+    events_cloud = data_weather[["CloudCover","Events"]].fillna(value="other")
+    sun_index = (events_cloud['Events'] == "other") & (events_cloud['CloudCover'] <=4 )
+    cloudy_index = (events_cloud['Events'] == "other") & (events_cloud['CloudCover'] >4 )
+    data_weather["Events"][cloudy_index]="Cloud"
+    data_weather["Events"][sun_index]="Sun"
+    events= data_weather["Events"]
+    extrem_weather_index = (events == "Rain-Thunderstorm-Tornado") ^ (events == "Fog-Rain-Snow-Thunderstorm") ^ (events == "Rain-Snow-Thunderstorm") ^ (events == "Fog-Rain-Hail-Thunderstorm")^ (events == "Rain-Hail-Thunderstorm")^ (events == "Fog-Rain-Thunderstorm")^ (events == "Rain-Thunderstorm")^ (events == "Thunderstorm")
+    data_weather["Events"][extrem_weather_index]="Extrem"
+    snow_index = (events == "Rain-Snow") ^ (events == "Fog-Snow") ^ (events == "Fog-Rain-Snow")^ (events == "Snow")
+    data_weather["Events"][snow_index]="Snow"
+    fog_index = (events == "Fog") ^ (events == "Fog-Rain")
+    data_weather["Events"][fog_index]="Fog"
+    data_weather["Events"]=data_weather["Events"].factorize()[0]
+    
+    return data_weather
+    
+def fix_gust_speed(data_weather):
+    gust_speed = data_weather["Max Gust SpeedKm/h"]
+    gust_speed = gust_speed.fillna(value="other")
+    index = (gust_speed == "other")
+    data_weather["Max Gust SpeedKm/h"][index] = data_weather["Max Wind SpeedKm/h"][index]
+    
+    return data_weather
+
+def meteorological_data(data,all_data=True):
+    
+    data_weather = pd.read_csv("Additional data/Meteorological_data.csv")
+    if all_data==False:
+        X_weather = data_weather
+        X_weather = fix_events_column(X_weather)
+        X_weather = fix_gust_speed(X_weather)
+        X_weather = X_weather.drop("Precipitationmm",axis=1)
+        X_weather = data_weather[['Date', 'AirPort', 'Events', 'Max TemperatureC']]        
+    else:
+        X_weather = data_weather
+        X_weather = fix_events_column(X_weather)
+        X_weather = fix_gust_speed(X_weather)
+        X_weather = X_weather.drop("Precipitationmm",axis=1)
+    
+    X_weather = X_weather.rename(columns={'Date': 'DateOfDeparture', 'AirPort': 'Arrival'})
+    data = data.set_index(['DateOfDeparture', 'Arrival'])
+    X_weather = X_weather.set_index(['DateOfDeparture', 'Arrival'])
+    data = data.join(X_weather).reset_index()
     
     return data
 
@@ -125,7 +230,7 @@ def airport_log_flow(data):
         
     adjacency_matrix=nx.to_pandas_dataframe(G)
     
-    
+    plt.figure()
     sb.heatmap(adjacency_matrix,cmap="OrRd")
         
 
