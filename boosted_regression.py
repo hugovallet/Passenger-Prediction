@@ -172,23 +172,12 @@ best_reg.predict(X0_test)
 print "RMSE :", np.sqrt(best_reg.best_score_)
 
 #%%
-best_params={'loss': 'ls', 'learning_rate': 0.1, 'min_samples_leaf': 3, 'n_estimators': 400, 'max_features': 'auto','max_depth': 10}
-reg=GradientBoostingRegressor(**best_params)
-reg.fit(X2_train, y2_train)
-y_pred = reg.predict(X2_test)
-print "RMSE :", np.sqrt(mean_squared_error(y_pred,y2_test))
-
-#%%
-from sklearn.ensemble import AdaBoostRegressor
-ada= AdaBoostRegressor(base_estimator=reg,n_estimators=2,learning_rate=1)
-ada.fit(X0_train, y0_train)
-y_pred = reg.predict(X0_test)
-print "RMSE :", np.sqrt(mean_squared_error(y_pred,y0_test))
+best_params={'loss': 'ls', 'learning_rate': 0.1, 'min_samples_leaf': 3, 'n_estimators': 600, 'max_features': 'auto','max_depth': 10}
 
 
-#%%
-from sklearn.cross_validation import cross_val_score
+#%% trained with best params, on complete dataset with additional data
 data = pd.read_csv("train.csv")
+data = data.drop("Unnamed: 0",axis=1)
 data_completed_all = airport_geographic_data(data, include_names=False,keep_only_distance=True,scaling=False)
 data_completed_all = airports_traffic(data_completed_all)
 data_completed_all = air_accidents_data(data_completed_all)
@@ -202,11 +191,14 @@ X_train, X_test, y_train, y_test = train_test_split(X_array, y_array, test_size=
 reg.fit(X_train,y_train)
 y_pred = reg.predict(X_test)
 
+#%% get a cross-validated score
+from sklearn.cross_validation import cross_val_score
 score = cross_val_score(estimator=reg,X=X_array,y=y_array,scoring="mean_squared_error",cv=3)
 print "RMSE : ", np.sqrt(np.abs(np.mean(score)))
 
 #%%
-fig, axes = plt.subplots(1, 1, figsize=(20, 6))
-plot_stages(reg, X_train, y_train, X_test, y_test, axes)
+fig, axes = plt.subplots(1, 2, figsize=(20, 6))
+plot_stages(reg, X_train, y_train, X_test, y_test, axes[0])
+plot_coeff_importances(reg,X_columns,axes[1])
 print "RMSE :", np.sqrt(mean_squared_error(y_pred,y_test))
 
