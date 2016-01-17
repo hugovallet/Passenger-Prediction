@@ -174,20 +174,21 @@ def fix_gust_speed(data_weather):
     
     return data_weather
 
-def meteorological_data(data,all_data=True):
+def meteorological_data(data,columns=None):
     
     data_weather = pd.read_csv("Additional data/Meteorological_data.csv")
-    if all_data==False:
+           
+    if columns==None:
         X_weather = data_weather
         X_weather = fix_events_column(X_weather)
         X_weather = fix_gust_speed(X_weather)
         X_weather = X_weather.drop("Precipitationmm",axis=1)
-        X_weather = data_weather[['Date', 'AirPort', 'Events', 'Max TemperatureC']]        
-    else:
+    else :
         X_weather = data_weather
         X_weather = fix_events_column(X_weather)
         X_weather = fix_gust_speed(X_weather)
         X_weather = X_weather.drop("Precipitationmm",axis=1)
+        
     
     X_weather = X_weather.rename(columns={'Date': 'DateOfDeparture', 'AirPort': 'Arrival'})
     data = data.set_index(['DateOfDeparture', 'Arrival'])
@@ -195,7 +196,37 @@ def meteorological_data(data,all_data=True):
     data = data.join(X_weather).reset_index()
     
     return data
+    
+#%%
+    
+def get_logpax_timeseries(data):
+    departures = data["Departure"].unique()
+    arrivals = data["Arrival"].unique()
+    all_series = pd.DataFrame("Date")
+    for departure in departures:
+        for arrival in arrivals :
+            time_series = data[data["Departure"]==departure]
+            time_series = time_series[time_series["Arrival"]==arrival]
+            time_series = time_series[["DateOfDeparture","log_PAX"]]
+            time_series['DateOfDeparture'] = pd.to_datetime(time_series['DateOfDeparture'])
+            time_series['n_days'] = time_series['DateOfDeparture'].apply(lambda date: (date - pd.to_datetime("1970-01-01")).days)
+            time_series = time_series.set_index("n_days")
+            time_series = time_series.sort_index()
+            time_series = time_series.drop("DateOfDeparture",axis=1)
+            
+    return time_series
+    
+#%%
+from sklearn.gaussian_process import GaussianProcess
 
+nugget1=np.arange(0,445)
+gp = GaussianProcess(regr='quadratic', corr= 'linear',theta0=10,thetaL=10, thetaU=10,nugget=0.1)
+gp.fit(X,y)
+y_pred=gp.predict(X)
+plt.plot(X,y,color="red")
+plt.plot(X,y_pred,color="blue")
+
+#%%
 def dummy_converter(data_encoded):
     data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Departure'], prefix='d'))
     data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Arrival'], prefix='a'))

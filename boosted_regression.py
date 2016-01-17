@@ -172,15 +172,18 @@ best_reg.predict(X0_test)
 print "RMSE :", np.sqrt(best_reg.best_score_)
 
 #%%
-best_params={'loss': 'ls', 'learning_rate': 0.1, 'min_samples_leaf': 3, 'n_estimators': 600, 'max_features': 'auto','max_depth': 10}
+best_params={'loss': 'ls', 'learning_rate': 0.05, 'min_samples_leaf': 3, 'n_estimators': 600, 'max_features': 'auto','max_depth': 10}
 
 
 #%% trained with best params, on complete dataset with additional data
-data = pd.read_csv("train.csv")
-data = data.drop("Unnamed: 0",axis=1)
-data_completed_all = airport_geographic_data(data, include_names=False,keep_only_distance=True,scaling=False)
-data_completed_all = airports_traffic(data_completed_all)
+data = pd.read_csv("public_train.csv")
+#data = data.drop("Unnamed: 0",axis=1)
+#data_completed_all = meteorological_data(data,columns=["Events","Max Gust SpeedKm/h"])#CONSTRUCTION EN COURS
+data_completed_all = airports_traffic(data)
+data_completed_all = airport_geographic_data(data_completed_all, include_names=False,keep_only_distance=True,scaling=False)
+data_completed_all = airports_monthly_traffic(data_completed_all)
 data_completed_all = air_accidents_data(data_completed_all)
+#data_completed_all = pd.concat([data_completed_all,pd.DataFrame(data=hidden_states,columns={"states"})],axis=1)
 data_converted_all = dummy_converter(data_completed_all)
 X_array = data_converted_all.drop(['log_PAX','DateOfDeparture'], axis=1).values
 X_columns = data_converted_all.columns.drop(['log_PAX','DateOfDeparture'])
@@ -202,3 +205,32 @@ plot_stages(reg, X_train, y_train, X_test, y_test, axes[0])
 plot_coeff_importances(reg,X_columns,axes[1])
 print "RMSE :", np.sqrt(mean_squared_error(y_pred,y_test))
 
+#%%HMM
+from hmmlearn.hmm import GaussianHMM
+
+pax = data["log_PAX"].values
+weeks = data["WeeksToDeparture"].values
+dates=pd.to_datetime(data["DateOfDeparture"])
+X = np.column_stack([pax, weeks])
+model = GaussianHMM(n_components=10, covariance_type="diag", n_iter=2000).fit(X)
+# Predict the optimal sequence of internal hidden state
+hidden_states = model.predict(X)
+print "Converged ? ",model.monitor_.converged
+
+#%% Try to re-train after filtering
+from postprocessing import *
+
+#Just check if feature selection could improve the results
+
+for i in range(10,160,20):
+    nb_features_to_keep = i
+    data_f = filter_by_importance(reg,data_converted_all,nb_features_to_keep)
+    X_array_f = data_f.drop(['log_PAX','DateOfDeparture'], axis=1).values
+    X_columns_f = data_f.columns.drop(['log_PAX','DateOfDeparture'])
+    y_array_f = data_f['log_PAX'].values
+    
+    reg_f = GradientBoostingRegressor(**best_params)
+    X_train_f, X_test_f, y_train_f, y_test_f = train_test_split(X_array_f, y_array_f, test_size=0.4,random_state=1)
+    reg_f.fit(X_train_f,y_train_f)
+    y_pred_f = reg_f.predict(X_test_f)
+    print "RMSE, model with ",str(nb_features_to_keep)," features : ", np.sqrt(mean_squared_error(y_pred_f,y_test_f))

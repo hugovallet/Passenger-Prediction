@@ -58,3 +58,5 @@ def plot_coeff_importances(reg,data_columns,ax,title=""):
     ax.set_xticks(x + 0.5)
     ax.set_xticklabels(feature_names, rotation=90, fontsize=5)
     ax.set_ylabel('Coefficient importance')
+    
+    
