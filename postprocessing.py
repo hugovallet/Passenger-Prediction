@@ -15,3 +15,27 @@ def filter_by_importance(reg,data,nb_features_to_keep):
     filtered_data = data[feature_names]
     
     return filtered_data
+    
+
+class mean_regressor :
+    def __init__(self):
+        self.series = None
+        
+        
+    def fit(self,data):
+        log_pax=data[["DateOfDeparture","log_PAX"]]
+        log_pax=log_pax.groupby(["DateOfDeparture"])["log_PAX"].mean()
+        self.series = log_pax
+    
+    def predict(self,data_test):
+        date = data_test["DateOfDeparture"]
+        log_pax_values = self.series
+        y_predict=np.zeros(len(date))
+        for i in range(len(date)):
+            
+            index = (log_pax_values.index==date.iloc[i])
+            y_predict[i] = log_pax_values[index]
+        
+        return y_predict
+        
+        

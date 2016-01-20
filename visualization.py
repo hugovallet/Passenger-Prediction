@@ -56,7 +56,21 @@ def plot_coeff_importances(reg,data_columns,ax,title=""):
     ax.set_title('Importances for :'+str(title))
     ax.bar(x, importances)
     ax.set_xticks(x + 0.5)
-    ax.set_xticklabels(feature_names, rotation=90, fontsize=5)
-    ax.set_ylabel('Coefficient importance')
+    ax.set_xticklabels(feature_names, rotation=90, fontsize=8)
+    ax.set_ylabel('Feature importance')
     
+def airport_log_flow(data):
+    import networkx as nx
+    import seaborn as sb
+    matrix=data[["log_PAX","Departure","Arrival"]]
+    group=matrix.groupby(['Departure', 'Arrival'],as_index=False).mean()
+    G=nx.Graph()
+    for i in range(126):
+        G.add_edge(group["Departure"][i],group["Arrival"][i],weight=group["log_PAX"][i])
+        
+    adjacency_matrix=nx.to_pandas_dataframe(G)
+    
+    plt.figure(figsize=(15,15))
+    sb.heatmap(adjacency_matrix,cmap="OrRd")
+        
     

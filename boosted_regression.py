@@ -53,7 +53,7 @@ X2_columns = data_converted2.columns.drop(['log_PAX','DateOfDeparture'])
 y2 = data_converted2['log_PAX'].values
 
 #Third input : added nan-fixed meteorological features
-data_completed3 = meteorological_data(data,all_data=True)
+data_completed3 = meteorological_data(data)
 data_converted3 = dummy_converter(data_completed3)
 X3 = data_converted3.drop(['log_PAX','DateOfDeparture'], axis=1).values
 X3_columns = data_converted3.columns.drop(['log_PAX','DateOfDeparture'])
@@ -172,7 +172,7 @@ best_reg.predict(X0_test)
 print "RMSE :", np.sqrt(best_reg.best_score_)
 
 #%%
-best_params={'loss': 'ls', 'learning_rate': 0.05, 'min_samples_leaf': 3, 'n_estimators': 600, 'max_features': 'auto','max_depth': 10}
+best_params={'loss': 'ls', 'learning_rate': 0.1, 'min_samples_leaf': 3, 'n_estimators': 500, 'max_features': 'auto','max_depth': 10,'alpha':0.99}
 
 
 #%% trained with best params, on complete dataset with additional data
@@ -234,3 +234,58 @@ for i in range(10,160,20):
     reg_f.fit(X_train_f,y_train_f)
     y_pred_f = reg_f.predict(X_test_f)
     print "RMSE, model with ",str(nb_features_to_keep)," features : ", np.sqrt(mean_squared_error(y_pred_f,y_test_f))
+    
+#%% Test the mean regressor
+data = pd.read_csv("public_train.csv")
+data_completed_all = airports_traffic(data)
+data_completed_all = airport_geographic_data(data_completed_all, include_names=False,keep_only_distance=True,scaling=False)
+data_completed_all = airports_monthly_traffic(data_completed_all)
+data_completed_all = air_accidents_data(data_completed_all)
+data_converted_all = dummy_converter(data_completed_all)
+
+
+mean_reg = mean_regressor()
+mean_reg.fit(data_converted_all)
+data_train, data_test, y_train, y_test = train_test_split(data, data["log_PAX"], test_size=0.4,random_state=1)
+
+y_pred_mean = mean_reg.predict(data_test)
+
+#%%Test 1 model per air route
+data = pd.read_csv("train.csv")
+data = data.drop("Unnamed: 0",axis=1)
+data_completed_all = airports_traffic(data)
+data_completed_all = airport_geographic_data(data_completed_all, include_names=False,keep_only_distance=True,scaling=False)
+data_completed_all = airports_monthly_traffic(data_completed_all)
+data_completed_all = air_accidents_data(data_completed_all)
+reg = GradientBoostingRegressor(**best_params)
+airports=data["Departure"].unique()
+
+data_train, data_test, y_train, y_test = train_test_split(data_completed_all, data_completed_all["log_PAX"], test_size=0.2)
+data_train = dummy_converter(data_train,only_for_date=True)
+data_test = dummy_converter(data_test,only_for_date=True)
+data_train = data_train.drop(["DateOfDeparture"],axis=1)
+data_test = data_test.drop(["DateOfDeparture"],axis=1)
+
+results=np.zeros(len(y_test))
+names=[]
+it=0
+
+for airport1,airport2 in itertools.combinations(airports,2):
+    road_train = data_train[(data_train["Departure"]==airport1) ^ (data_train["Departure"]==airport2)]
+    road_train = road_train[(road_train["Arrival"]==airport2) ^ (road_train["Arrival"]==airport1)]
+    y_road_train = road_train["log_PAX"]
+    road_train = road_train.drop(["Departure","Arrival","log_PAX"],axis=1)
+    
+    road_test = data_test[(data_test["Departure"]==airport1) ^ (data_test["Departure"]==airport2)]
+    road_test = road_test[(road_test["Arrival"]==airport2) ^ (road_test["Arrival"]==airport1)]
+    y_road_test = road_test["log_PAX"]
+    road_test = road_test.drop(["Departure","Arrival","log_PAX"],axis=1)
+    
+    if road_train.shape[0]!=0:
+        reg.fit(road_train,y_road_train)
+        y_road_pred = reg.predict(road_test)
+        results[it]=np.sqrt(mean_squared_error(y_road_pred,y_road_test))
+        names.append(airport1+airport2)
+        it=it+1
+        
+

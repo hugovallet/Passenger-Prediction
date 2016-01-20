@@ -139,8 +139,8 @@ def airports_monthly_traffic(data):
     departure_monthly_passengers = monthly_passengers.copy()
     departure_monthly_passengers = departure_monthly_passengers.rename(columns={"Monthly passengers":"Departure Monthly Passengers","Code":"Departure"})
     
-    data_encoded = pd.merge(data_encoded,departure_monthly_passengers,on=["Departure","year","month"])
-    data_encoded = pd.merge(data_encoded,arrival_monthly_passengers,on=["Arrival","year","month"])
+    data_encoded = data_encoded.reset_index().merge(departure_monthly_passengers,how='left').set_index('index')
+    data_encoded = data_encoded.reset_index().merge(arrival_monthly_passengers,how="left").set_index('index')
     data_encoded = data_encoded.drop(["year","month"],axis=1)
     
     return data_encoded
@@ -170,7 +170,7 @@ def fix_gust_speed(data_weather):
     gust_speed = data_weather["Max Gust SpeedKm/h"]
     gust_speed = gust_speed.fillna(value="other")
     index = (gust_speed == "other")
-    data_weather["Max Gust SpeedKm/h"][index] = data_weather["Max Wind SpeedKm/h"][index]
+    data_weather["Max Gust SpeedKm/h"][index] = data_weather["Max Wind SpeedKm/h"][index].astype(float)
     
     return data_weather
 
@@ -191,10 +191,15 @@ def meteorological_data(data,columns=None):
         
     
     X_weather = X_weather.rename(columns={'Date': 'DateOfDeparture', 'AirPort': 'Arrival'})
+    
+    X_weather['DateOfDeparture'] = pd.to_datetime(X_weather['DateOfDeparture'])
+    data['DateOfDeparture'] = pd.to_datetime(data['DateOfDeparture'])
+    """
     data = data.set_index(['DateOfDeparture', 'Arrival'])
     X_weather = X_weather.set_index(['DateOfDeparture', 'Arrival'])
     data = data.join(X_weather).reset_index()
-    
+"""
+    data = data.reset_index().merge(X_weather,how="left").set_index("index")    
     return data
     
 #%%
@@ -216,22 +221,15 @@ def get_logpax_timeseries(data):
             
     return time_series
     
-#%%
-from sklearn.gaussian_process import GaussianProcess
 
-nugget1=np.arange(0,445)
-gp = GaussianProcess(regr='quadratic', corr= 'linear',theta0=10,thetaL=10, thetaU=10,nugget=0.1)
-gp.fit(X,y)
-y_pred=gp.predict(X)
-plt.plot(X,y,color="red")
-plt.plot(X,y_pred,color="blue")
 
 #%%
-def dummy_converter(data_encoded):
-    data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Departure'], prefix='d'))
-    data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Arrival'], prefix='a'))
-    data_encoded = data_encoded.drop('Departure', axis=1)
-    data_encoded = data_encoded.drop('Arrival', axis=1)
+def dummy_converter(data_encoded, only_for_date=False):
+    if only_for_date==False:
+        data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Departure'], prefix='d'))
+        data_encoded = data_encoded.join(pd.get_dummies(data_encoded['Arrival'], prefix='a'))
+        data_encoded = data_encoded.drop('Departure', axis=1)
+        data_encoded = data_encoded.drop('Arrival', axis=1)
     
     # following http://stackoverflow.com/questions/16453644/regression-with-date-variable-using-scikit-learn
     data_encoded['DateOfDeparture'] = pd.to_datetime(data_encoded['DateOfDeparture'])
@@ -250,18 +248,5 @@ def dummy_converter(data_encoded):
     
     return data_encoded
 
-def airport_log_flow(data):
-    import networkx as nx
-    import seaborn as sb
-    matrix=data[["log_PAX","Departure","Arrival"]]
-    group=matrix.groupby(['Departure', 'Arrival'],as_index=False).mean()
-    G=nx.Graph()
-    for i in range(126):
-        G.add_edge(group["Departure"][i],group["Arrival"][i],weight=group["log_PAX"][i])
-        
-    adjacency_matrix=nx.to_pandas_dataframe(G)
-    
-    plt.figure()
-    sb.heatmap(adjacency_matrix,cmap="OrRd")
-        
+
 
